@@ -1,0 +1,59 @@
+body{
+    background-color: blueviolet;
+    font: normal 20pt arial;
+}
+
+header{
+    color: black;
+    text-align: center;
+}
+
+section{
+    background-color: wheat;
+    border-radius: 15px;
+    padding: 20px;
+    width: 200px;
+    margin: auto;
+    box-shadow: 5px 5px 10px;
+    
+}
+
+div{
+    text-align: center;
+    padding: 10px
+}
+
+
+
+
+
+
+a{
+    text-decoration: none;
+    background-color: var(--text-color);
+    color: var(--text-color);
+}
+
+button{
+    height: 45px;
+    width: 200px;
+    align-items: center;
+    margin-top: 8px;
+    border-radius: 8px;
+    color:beige;
+    background-color: brown;
+    transition: background 400ms;
+
+}
+
+button :hover{
+    background-color: azure;
+}
+
+table{
+    margin: auto;
+}
+
+input{
+    text-align: center;
+}
