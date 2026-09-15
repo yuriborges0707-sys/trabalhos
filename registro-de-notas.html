@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Registro de notas</title>
+
+<link
+  href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<style>
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const CHALK = "#F2EEE1";
+const BOARD = "#1F3B2C";
+const BOARD_DARK = "#193024";
+const CHALK_YELLOW = "#E7C568";
+const INK_RED = "#C1453A";
+const VERDE_OK = "#5FA777";
+const LINE = "rgba(242,238,225,0.14)";
+
+const CAMPOS = [
+  { key: "n1", label: "Nota 1" },
+  { key: "n2", label: "Nota 2" },
+  { key: "n3", label: "Nota 3" },
+  { key: "n4", label: "Nota 4" },
+  { key: "n5", label: "Nota 5" },
+];
+
+function formVazio() {
+  return { nome: "", n1: "", n2: "", n3: "", n4: "", n5: "" };
+}
+
+// Mantém só dígitos e um único ponto decimal, e trava o valor em no máximo 10
+function sanitizarNota(raw) {
+  let v = raw.replace(/[^0-9.]/g, "");
+  const partes = v.split(".");
+  if (partes.length > 2) v = partes[0] + "." + partes.slice(1).join("");
+  if (v !== "" && v !== ".") {
+    const num = parseFloat(v);
+    if (!Number.isNaN(num) && num > 10) v = "10";
+  }
+  return v;
+}
+
+// Mantém só letras, espaços e acentos — nenhum dígito passa
+function sanitizarNome(raw) {
+  return raw.replace(/[0-9]/g, "");
+}
+
+function paraNumero(v) {
+  if (v === "" || v === ".") return 0;
+  const num = parseFloat(v);
+  if (Number.isNaN(num)) return 0;
+  return Math.min(10, Math.max(0, num));
+}
+
+function CrudNotas() {
+  // ---------- "banco de dados" em memória ----------
+  const [registros, setRegistros] = useState([
+    { id: 1, nome: "Pedro Alves", notas: [8, 7.5, 9, 6, 8.5] },
+    { id: 2, nome: "Marina Souza", notas: [10, 9, 8, 9.5, 10] },
+  ]);
+  const proximoIdRef = useRef(3);
+  const [editandoId, setEditandoId] = useState(null);
+  const [form, setForm] = useState(formVazio());
+  const [ultimaAcao, setUltimaAcao] = useState("Pronto para receber lançamentos.");
+
+  const nomeRef = useRef(null);
+  const notaRefs = useRef([]);
+
+  function media(notas) {
+    const m = notas.reduce((a, b) => a + b, 0) / notas.length;
+    return Math.min(10, Math.max(0, m)).toFixed(1);
+  }
+
+  // Mesma regra de faixas de antes (menor que 7 / na casa do 7 / 8 pra cima),
+  // só que agora devolve o nome da classe CSS em vez da cor "crua".
+  function corMedia(valor) {
+    const m = Number(valor);
+    if (m < 7) return "cn-media--baixa";
+    if (m < 8) return "cn-media--media";
+    return "cn-media--alta";
+  }
+
+  // ---------- CREATE ----------
+  function create(dados) {
+    const novoRegistro = { id: proximoIdRef.current, nome: dados.nome, notas: dados.notas };
+    proximoIdRef.current += 1;
+    setRegistros((prev) => [...prev, novoRegistro]);
+    setUltimaAcao(`Lançamento criado para ${dados.nome}.`);
+    return novoRegistro;
+  }
+
+  // ---------- READ ----------
+  function read(id) {
+    if (id === undefined) return registros;
+    return registros.find((r) => r.id === id) || null;
+  }
+
+  // ---------- UPDATE ----------
+  function update(id, dados) {
+    setRegistros((prev) =>
+      prev.map((r) =>
+        r.id === id ? { id: r.id, nome: dados.nome, notas: dados.notas } : r
+      )
+    );
+    setUltimaAcao(`Lançamento de ${dados.nome} atualizado.`);
+  }
+
+  // ---------- DELETE ----------
+  function deleteRegistro(id) {
+    const alvo = read(id);
+    setRegistros((prev) => prev.filter((r) => r.id !== id));
+    if (editandoId === id) {
+      setEditandoId(null);
+      setForm(formVazio());
+    }
+    setUltimaAcao(alvo ? `Lançamento de ${alvo.nome} removido.` : "Lançamento removido.");
+  }
+
+  function iniciarEdicao(registro) {
+    setEditandoId(registro.id);
+    setForm({
+      nome: registro.nome,
+      n1: String(registro.notas[0]),
+      n2: String(registro.notas[1]),
+      n3: String(registro.notas[2]),
+      n4: String(registro.notas[3]),
+      n5: String(registro.notas[4]),
+    });
+    nomeRef.current && nomeRef.current.focus();
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+    setForm(formVazio());
+  }
+
+  function handleNomeChange(raw) {
+    setForm((prev) => ({ ...prev, nome: sanitizarNome(raw) }));
+  }
+
+  function handleNotaChange(key, raw) {
+    setForm((prev) => ({ ...prev, [key]: sanitizarNota(raw) }));
+  }
+
+  // Única função que efetivamente grava o registro (usada pelo botão E pelo Enter)
+  function confirmar() {
+    const nome = form.nome.trim() || `Aluno ${proximoIdRef.current}`;
+    const notas = CAMPOS.map((c) => paraNumero(form[c.key]));
+
+    if (editandoId !== null) {
+      update(editandoId, { nome, notas });
+    } else {
+      create({ nome, notas });
+    }
+    setForm(formVazio());
+    setEditandoId(null);
+    nomeRef.current && nomeRef.current.focus();
+  }
+
+  // Enter no campo "nome" -> foca a primeira nota
+  function handleNomeKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      notaRefs.current[0] && notaRefs.current[0].focus();
+    }
+  }
+
+  // Enter em uma nota -> foca a próxima nota; na última, confirma
+  function handleNotaKeyDown(e, index) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const proximo = notaRefs.current[index + 1];
+    if (proximo) {
+      proximo.focus();
+      proximo.select && proximo.select();
+    } else {
+      confirmar();
+    }
+  }
+
+  return (
+    <div className="cn-app">
+      <div className="cn-shell">
+        <div className="cn-container">
+          <div className="cn-header">
+            <h1 className="cn-title">Registro de notas</h1>
+          </div>
+
+          <div className="cn-layout">
+            {/* PAINEL — Create / Update */}
+            <div className="cn-panel">
+              <div className="cn-panel-title">
+                {editandoId !== null ? "Corrigir lançamento" : "Novo lançamento"}
+              </div>
+
+              <div className="cn-field">
+                <label className="cn-label">Nome do aluno</label>
+                <input
+                  ref={nomeRef}
+                  value={form.nome}
+                  onChange={(e) => handleNomeChange(e.target.value)}
+                  onKeyDown={handleNomeKeyDown}
+                  placeholder="Ex: Pedro Alves"
+                  className="cn-input"
+                />
+              </div>
+
+              <div className="cn-notas-grid">
+                {CAMPOS.map((c, index) => (
+                  <div key={c.key} className="cn-field">
+                    <label className="cn-label">{c.label}</label>
+                    <input
+                      ref={(el) => (notaRefs.current[index] = el)}
+                      type="text"
+                      inputMode="decimal"
+                      value={form[c.key]}
+                      onChange={(e) => handleNotaChange(c.key, e.target.value)}
+                      onKeyDown={(e) => handleNotaKeyDown(e, index)}
+                      placeholder="0.0"
+                      className="cn-input"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="cn-actions">
+                <button type="button" onClick={confirmar} className="cn-btn cn-btn-primary">
+                  {editandoId !== null ? "Salvar alterações" : "Adicionar registro"}
+                </button>
+                {editandoId !== null && (
+                  <button type="button" onClick={cancelarEdicao} className="cn-btn cn-btn-ghost">
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* LISTA — Read, com ações de Update e Delete por card */}
+            <div>
+              <p className="cn-list-title">Alunos lançados</p>
+
+              {registros.length === 0 && (
+                <div className="cn-empty">
+                  Nenhum registro na lousa ainda — use o formulário ao lado para criar o
+                  primeiro.
+                </div>
+              )}
+
+              {registros.length > 0 && (
+                <div className="cn-cards">
+                  {registros.map((r) => (
+                    <div
+                      key={r.id}
+                      className={`cn-card ${editandoId === r.id ? "cn-card--editando" : ""}`}
+                    >
+                      <div className="cn-card-top">
+                        <span className="cn-card-nome">{r.nome}</span>
+                        <span className="cn-card-acoes">
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicao(r)}
+                            className="cn-btn-small"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteRegistro(r.id)}
+                            className="cn-btn-small cn-btn-danger"
+                          >
+                            Excluir
+                          </button>
+                        </span>
+                      </div>
+
+                      <div className="cn-card-notas">
+                        {r.notas.map((n, i) => (
+                          <span className="cn-nota-pill" key={i}>
+                            {n}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="cn-media-row">
+                        <span className="cn-media-label">Média</span>
+                        <span className={`cn-media ${corMedia(media(r.notas))}`}>
+                          {media(r.notas)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="cn-status">{ultimaAcao}</div>
+        </div>
+      </div>
+
+      <style>{`
+        /* ============ BASE ============ */
+        .cn-app {
+          position: fixed;
+          inset: 0;
+          overflow: auto;
+          background: ${BOARD};
+          background-image:
+            radial-gradient(ellipse at top left, rgba(255,255,255,0.06), transparent 55%),
+            radial-gradient(ellipse at bottom right, rgba(231,197,104,0.05), transparent 50%);
+          font-family: 'Inter', sans-serif;
+          color: ${CHALK};
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        /* ============ LAYOUT GERAL ============ */
+        .cn-shell {
+          padding: 40px 24px 56px;
+        }
+
+        .cn-container {
+          max-width: 960px;
+          margin: 0 auto;
+        }
+
+        .cn-layout {
+          display: grid;
+          grid-template-columns: minmax(260px, 320px) 1fr;
+          gap: 28px;
+          align-items: start;
+        }
+
+        @media (max-width: 720px) {
+          .cn-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* ============ CABEÇALHO ============ */
+        .cn-header {
+          margin-bottom: 32px;
+          padding-bottom: 20px;
+          border-bottom: 1px solid ${LINE};
+        }
+
+        .cn-title {
+          font-family: 'Caveat', cursive;
+          font-size: 54px;
+          font-weight: 700;
+          margin: 0;
+          color: ${CHALK};
+          line-height: 1;
+        }
+
+        /* ============ PAINEL DE FORMULÁRIO (CREATE / UPDATE) ============ */
+        .cn-panel {
+          background: linear-gradient(180deg, ${BOARD_DARK}, rgba(25,48,36,0.85));
+          border: 1px solid ${LINE};
+          border-radius: 14px;
+          padding: 22px;
+          box-shadow: 0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+
+        .cn-panel-title {
+          font-family: 'Caveat', cursive;
+          font-size: 26px;
+          color: ${CHALK_YELLOW};
+          margin-bottom: 16px;
+        }
+
+        .cn-field {
+          margin-bottom: 12px;
+        }
+
+        .cn-label {
+          display: block;
+          font-size: 12px;
+          font-weight: 500;
+          letter-spacing: 0.01em;
+          color: rgba(242,238,225,0.6);
+          margin: 0 0 6px;
+        }
+
+        .cn-notas-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-top: 4px;
+        }
+
+        /* ============ INPUTS ============ */
+        .cn-input {
+          width: 100%;
+          background: rgba(242, 238, 225, 0.05);
+          border: 1px solid rgba(242, 238, 225, 0.18);
+          border-radius: 9px;
+          padding: 10px 12px;
+          color: ${CHALK};
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          outline: none;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease,
+            background-color 0.18s ease, transform 0.12s ease;
+        }
+
+        .cn-input::placeholder {
+          color: rgba(242, 238, 225, 0.35);
+        }
+
+        .cn-input:hover {
+          border-color: rgba(242, 238, 225, 0.32);
+          background: rgba(242, 238, 225, 0.07);
+        }
+
+        .cn-input:focus {
+          border-color: ${CHALK_YELLOW};
+          background: rgba(242, 238, 225, 0.08);
+          box-shadow: 0 0 0 3px rgba(231, 197, 104, 0.2);
+        }
+
+        /* ============ BOTÕES ============ */
+        .cn-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .cn-btn {
+          border: none;
+          border-radius: 9px;
+          padding: 11px 16px;
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: transform 0.12s ease, box-shadow 0.18s ease, opacity 0.18s ease,
+            background-color 0.18s ease, border-color 0.18s ease;
+        }
+
+        .cn-btn:active {
+          transform: translateY(1px);
+        }
+
+        .cn-btn-primary {
+          flex: 1;
+          background: ${CHALK_YELLOW};
+          color: ${BOARD_DARK};
+          box-shadow: 0 6px 16px rgba(231,197,104,0.25);
+        }
+
+        .cn-btn-primary:hover {
+          box-shadow: 0 8px 20px rgba(231,197,104,0.38);
+          transform: translateY(-1px);
+        }
+
+        .cn-btn-ghost {
+          background: transparent;
+          color: ${CHALK};
+          border: 1px solid ${LINE};
+        }
+
+        .cn-btn-ghost:hover {
+          background: rgba(242,238,225,0.06);
+          border-color: rgba(242,238,225,0.3);
+        }
+
+        .cn-btn-small {
+          background: rgba(242,238,225,0.04);
+          border: 1px solid ${LINE};
+          color: ${CHALK};
+          border-radius: 7px;
+          padding: 6px 11px;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .cn-btn-small:hover {
+          background: rgba(242,238,225,0.1);
+          border-color: rgba(242,238,225,0.35);
+        }
+
+        .cn-btn-danger {
+          border-color: rgba(193,69,58,0.45);
+          color: ${INK_RED};
+        }
+
+        .cn-btn-danger:hover {
+          background: rgba(193,69,58,0.12);
+          border-color: ${INK_RED};
+        }
+
+        /* ============ LISTA DE REGISTROS (CARDS) ============ */
+        .cn-list-title {
+          font-size: 13px;
+          color: rgba(242,238,225,0.5);
+          margin: 0 0 14px 2px;
+        }
+
+        .cn-empty {
+          color: rgba(242,238,225,0.55);
+          background: rgba(242,238,225,0.03);
+          border: 1px dashed ${LINE};
+          border-radius: 12px;
+          padding: 22px;
+          text-align: center;
+        }
+
+        .cn-cards {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+          gap: 16px;
+        }
+
+        .cn-card {
+          background: linear-gradient(165deg, rgba(242,238,225,0.05), rgba(242,238,225,0.02));
+          border: 1px solid ${LINE};
+          border-radius: 14px;
+          padding: 18px;
+          box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+          transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+        }
+
+        .cn-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 12px 26px rgba(0,0,0,0.3);
+          border-color: rgba(242,238,225,0.24);
+        }
+
+        .cn-card--editando {
+          border-color: ${CHALK_YELLOW};
+          background: linear-gradient(165deg, rgba(231,197,104,0.1), rgba(242,238,225,0.02));
+        }
+
+        .cn-card-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .cn-card-nome {
+          font-size: 16px;
+          font-weight: 600;
+          color: ${CHALK};
+          line-height: 1.3;
+        }
+
+        .cn-card-acoes {
+          display: flex;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .cn-card-notas {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 14px;
+        }
+
+        .cn-nota-pill {
+          background: rgba(242,238,225,0.06);
+          border: 1px solid ${LINE};
+          border-radius: 999px;
+          padding: 3px 10px;
+          font-size: 12px;
+          font-variant-numeric: tabular-nums;
+          color: rgba(242,238,225,0.8);
+        }
+
+        /* ============ BADGE DE MÉDIA ============ */
+        .cn-media-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-top: 12px;
+          border-top: 1px solid ${LINE};
+        }
+
+        .cn-media-label {
+          font-size: 12px;
+          color: rgba(242,238,225,0.5);
+        }
+
+        .cn-media {
+          font-weight: 700;
+          font-size: 14px;
+          font-variant-numeric: tabular-nums;
+          padding: 4px 12px;
+          border-radius: 999px;
+          border: 1px solid transparent;
+        }
+
+        .cn-media--baixa {
+          color: ${INK_RED};
+          background: rgba(193,69,58,0.12);
+          border-color: rgba(193,69,58,0.3);
+        }
+
+        .cn-media--media {
+          color: ${CHALK_YELLOW};
+          background: rgba(231,197,104,0.12);
+          border-color: rgba(231,197,104,0.32);
+        }
+
+        .cn-media--alta {
+          color: ${VERDE_OK};
+          background: rgba(95,167,119,0.14);
+          border-color: rgba(95,167,119,0.35);
+        }
+
+        /* ============ RODAPÉ / STATUS ============ */
+        .cn-status {
+          margin-top: 26px;
+          font-size: 13px;
+          color: rgba(242,238,225,0.55);
+          border-top: 1px solid ${LINE};
+          padding-top: 14px;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<CrudNotas />);
+</script>
+</body>
+</html>
